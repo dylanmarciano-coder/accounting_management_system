@@ -21,13 +21,6 @@ function accountName(code){return accounts.find(a=>a.code===code)?.name||code}
 function typeClass(type){return 'type-'+type.toLowerCase()}
 
 // ---------- Supabase data layer ----------
-// Your entry tables store accounts by id (debit_account_id / credit_account_id) and use transaction_date.
-// These helpers translate between that and the account codes the screen uses.
-const idOf   = code => accounts.find(a=>a.code===code)?.id;
-const codeOf = id   => accounts.find(a=>a.id===id)?.code ?? String(id);
-const fromRow = r => ({id:r.id,date:r.transaction_date,description:r.description,debit:codeOf(r.debit_account_id),credit:codeOf(r.credit_account_id),amount:Number(r.amount)});
-const toRow   = e => ({transaction_date:e.date,description:e.description,debit_account_id:idOf(e.debit),credit_account_id:idOf(e.credit),amount:e.amount});
-
 async function loadAll(){
   const [a,t,j] = await Promise.all([
     supabaseClient.from(TABLES.accounts).select('*'),
@@ -37,8 +30,8 @@ async function loadAll(){
   const err = a.error || t.error || j.error;
   if(err){console.error(err);toast('Could not load data: '+err.message);return false}
   accounts = a.data || [];
-  transactions = (t.data || []).map(fromRow);
-  adjustments = (j.data || []).map(fromRow);
+  transactions = (t.data || []).map(x=>({...x,amount:Number(x.amount)}));
+  adjustments = (j.data || []).map(x=>({...x,amount:Number(x.amount)}));
   return true;
 }
 
@@ -48,20 +41,13 @@ async function migrateLocalData(){
   const la=loadLocal(oldKeys.accounts), lt=loadLocal(oldKeys.transactions), lj=loadLocal(oldKeys.adjustments);
   if(!la.length&&!lt.length&&!lj.length)return;
   if(!confirm('Found data saved in this browser. Upload it to your online tables?'))return;
-  if(la.length){
-    const r=await supabaseClient.from(TABLES.accounts).insert(la.map(({code,name,type})=>({code,name,type})));
-    if(r.error){console.error(r.error);return toast('Upload failed: '+r.error.message)}
-    const re=await supabaseClient.from(TABLES.accounts).select('*'); // get the new ids
-    if(re.error){console.error(re.error);return toast('Upload failed: '+re.error.message)}
-    accounts=re.data||[];
-  }
-  const rows = list => list.map(toRow).filter(r=>r.debit_account_id!=null&&r.credit_account_id!=null);
-  for(const [table,list] of [[TABLES.transactions,lt],[TABLES.adjustments,lj]]){
-    const rr=rows(list);
-    if(!rr.length)continue;
-    const r=await supabaseClient.from(table).insert(rr);
-    if(r.error){console.error(r.error);return toast('Upload failed: '+r.error.message)}
-  }
+  const strip = list => list.map(({id,...rest})=>rest); // let Supabase generate ids
+  const results = [];
+  if(la.length) results.push(await supabaseClient.from(TABLES.accounts).insert(la));
+  if(lt.length) results.push(await supabaseClient.from(TABLES.transactions).insert(strip(lt)));
+  if(lj.length) results.push(await supabaseClient.from(TABLES.adjustments).insert(strip(lj)));
+  const failed = results.find(r=>r.error);
+  if(failed){console.error(failed.error);toast('Upload failed: '+failed.error.message);return}
   await loadAll();
   toast('Local data uploaded.');
 }
@@ -136,9 +122,9 @@ async function saveEntry(e,adj){
   if(debit===credit)return toast('Debit and credit accounts must be different.');
   if(!Number.isFinite(amount)||amount<=0)return toast('Enter an amount greater than zero.');
   const entry={date:$(p+'-date').value,description:$(p+'-description').value.trim(),debit,credit,amount:Math.round(amount*100)/100};
-  const {data,error}=await supabaseClient.from(adj?TABLES.adjustments:TABLES.transactions).insert(toRow(entry)).select().single();
+  const {data,error}=await supabaseClient.from(adj?TABLES.adjustments:TABLES.transactions).insert(entry).select().single();
   if(error){console.error(error);return toast('Could not save entry: '+error.message)}
-  (adj?adjustments:transactions).push(fromRow(data));
+  (adj?adjustments:transactions).push({...data,amount:Number(data.amount)});
   renderAll();form.reset();form.classList.add('hidden');toast(adj?'Adjustment saved.':'Transaction saved.');
 }
 $('transaction-form').addEventListener('submit',e=>saveEntry(e,false));
