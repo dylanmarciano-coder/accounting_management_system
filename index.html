@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Accounting Management System</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand-mark">A</div>
+    <div>
+      <h1>Accounting Management System</h1>
+      <p>Manage accounts, transactions, trial balance, and adjustments.</p>
+    </div>
+  </header>
+
+  <nav class="nav-tabs" aria-label="Main navigation">
+    <button class="nav-button active" data-page="accounts">Chart of Accounts</button>
+    <button class="nav-button" data-page="transactions">Business Transactions</button>
+    <button class="nav-button" data-page="trial">Trial Balance</button>
+    <button class="nav-button" data-page="adjustments">Adjustments</button>
+  </nav>
+
+  <main>
+    <section class="page active" id="accounts">
+      <div class="section-heading">
+        <div><h2>Chart of Accounts</h2><p>Set up the accounts your business uses.</p></div>
+        <button class="primary-button" id="show-account-form">+ Add Account</button>
+      </div>
+      <form class="entry-form hidden" id="account-form">
+        <div class="form-grid">
+          <label>Account Code<input id="account-code" required placeholder="e.g. 101"></label>
+          <label>Account Name<input id="account-name" required placeholder="e.g. Cash"></label>
+          <label>Account Type<select id="account-type"><option>Asset</option><option>Liability</option><option>Equity</option><option>Revenue</option><option>Expense</option></select></label>
+        </div>
+        <div class="form-actions"><button type="button" class="secondary-button" data-close="account-form">Cancel</button><button class="primary-button">Save Account</button></div>
+      </form>
+      <div class="panel">
+        <div class="table-top"><input id="account-search" class="search" placeholder="Search accounts..." aria-label="Search accounts"><span class="count" id="account-count">0 accounts</span></div>
+        <div class="table-scroll"><table><thead><tr><th>Code</th><th>Account Name</th><th>Type</th><th>Normal Balance</th><th>Action</th></tr></thead><tbody id="accounts-body"></tbody></table></div>
+      </div>
+    </section>
+
+    <section class="page" id="transactions">
+      <div class="section-heading">
+        <div><h2>Business Transactions</h2><p>Record each transaction using debit and credit entries.</p></div>
+        <button class="primary-button" id="show-transaction-form">+ Add Transaction</button>
+      </div>
+      <form class="entry-form hidden" id="transaction-form">
+        <div class="form-grid">
+          <label>Date<input id="transaction-date" type="date" required></label>
+          <label class="wide">Description<input id="transaction-description" required placeholder="Describe the transaction"></label>
+          <label>Debit Account<select id="transaction-debit" required></select></label>
+          <label>Credit Account<select id="transaction-credit" required></select></label>
+          <label>Amount (₱)<input id="transaction-amount" type="number" min="0.01" step="0.01" required placeholder="0.00"></label>
+        </div>
+        <div class="form-actions"><button type="button" class="secondary-button" data-close="transaction-form">Cancel</button><button class="primary-button">Save Transaction</button></div>
+      </form>
+      <div class="panel">
+        <div class="table-top"><input id="transaction-search" class="search" placeholder="Search transactions..." aria-label="Search transactions"><span class="count" id="transaction-count">0 entries</span></div>
+        <div class="table-scroll"><table><thead><tr><th>Date</th><th>Description</th><th>Debit Account</th><th>Credit Account</th><th class="number">Amount</th><th>Action</th></tr></thead><tbody id="transactions-body"></tbody></table></div>
+      </div>
+    </section>
+
+    <section class="page" id="trial">
+      <div class="section-heading">
+        <div><h2>Trial Balance</h2><p>Review account balances and check if debits equal credits.</p></div>
+        <button class="secondary-button" id="export-trial">Export CSV</button>
+      </div>
+      <div class="summary-row">
+        <div class="summary-card"><span>Total Debits</span><strong id="trial-debits">₱0.00</strong></div>
+        <div class="summary-card"><span>Total Credits</span><strong id="trial-credits">₱0.00</strong></div>
+        <div class="summary-card"><span>Difference</span><strong id="trial-difference">₱0.00</strong></div>
+      </div>
+      <div class="panel">
+        <div class="table-top"><strong>Account Balances</strong><select id="trial-mode" class="mode-select"><option value="adjusted">Adjusted</option><option value="unadjusted">Unadjusted</option></select></div>
+        <div class="table-scroll"><table><thead><tr><th>Code</th><th>Account Name</th><th class="number">Debit (₱)</th><th class="number">Credit (₱)</th></tr></thead><tbody id="trial-body"></tbody><tfoot><tr><th colspan="2">TOTAL</th><th class="number" id="trial-total-debit">₱0.00</th><th class="number" id="trial-total-credit">₱0.00</th></tr></tfoot></table></div>
+        <p class="balance-message" id="trial-message">Add accounts and transactions to calculate balances.</p>
+      </div>
+    </section>
+
+    <section class="page" id="adjustments">
+      <div class="section-heading">
+        <div><h2>Adjustments</h2><p>Record end-of-period adjusting entries.</p></div>
+        <button class="primary-button" id="show-adjustment-form">+ Add Adjustment</button>
+      </div>
+      <p class="info-note">Each adjustment must have a debit account, a credit account, and an equal amount.</p>
+      <form class="entry-form hidden" id="adjustment-form">
+        <div class="form-grid">
+          <label>Date<input id="adjustment-date" type="date" required></label>
+          <label class="wide">Description<input id="adjustment-description" required placeholder="Describe the adjustment"></label>
+          <label>Debit Account<select id="adjustment-debit" required></select></label>
+          <label>Credit Account<select id="adjustment-credit" required></select></label>
+          <label>Amount (₱)<input id="adjustment-amount" type="number" min="0.01" step="0.01" required placeholder="0.00"></label>
+        </div>
+        <div class="form-actions"><button type="button" class="secondary-button" data-close="adjustment-form">Cancel</button><button class="primary-button">Save Adjustment</button></div>
+      </form>
+      <div class="panel">
+        <div class="table-top"><input id="adjustment-search" class="search" placeholder="Search adjustments..." aria-label="Search adjustments"><span class="count" id="adjustment-count">0 entries</span></div>
+        <div class="table-scroll"><table><thead><tr><th>Date</th><th>Description</th><th>Debit Account</th><th>Credit Account</th><th class="number">Amount</th><th>Action</th></tr></thead><tbody id="adjustments-body"></tbody></table></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>Accounting Management System <span>Educational use</span></footer>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="script.js"></script>
+
+</body>
+</html>
