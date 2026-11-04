@@ -153,77 +153,164 @@ $('trial-mode').addEventListener('change',renderTrial);
 function downloadCSV(filename,rows){const csv=rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n'),blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url)}
 $('export-trial').addEventListener('click',()=>{const b=getBalances($('trial-mode').value==='adjusted'),rows=[['Account Code','Account Name','Debit (PHP)','Credit (PHP)']];let td=0,tc=0;accounts.slice().sort((a,c)=>a.code.localeCompare(c.code,undefined,{numeric:true})).forEach(a=>{const v=b[a.code]||0,d=Math.max(v,0),c=Math.max(-v,0);td+=d;tc+=c;rows.push([a.code,a.name,d?d.toFixed(2):'',c?c.toFixed(2):''])});rows.push(['','TOTAL',td.toFixed(2),tc.toFixed(2)]);downloadCSV('trial-balance.csv',rows)});
 
-function renderAll(){renderAccounts();renderEntries('transaction');renderEntries('adjustment');renderTrial()}
+function renderAll(){renderAccounts();renderEntries('transaction');renderEntries('adjustment');renderTrial();renderStatements()}
+
+// ---------- Financial statements (Income Statement & Statement of Owner's Equity) ----------
+const period = {from:'', to:''};
+const normType = a => String(a.type||'').toLowerCase();
+// Contra accounts such as Accumulated Depreciation belong on the balance sheet, never on the income statement
+const isContra  = a => /accumulated/i.test(a.name);
+const isRevenue = a => !isContra(a)&&/revenue|income|sales/.test(normType(a));
+const isExpense = a => !isContra(a)&&/expense|cost/.test(normType(a));
+const isEquity  = a => /equity|capital|owner|draw/.test(normType(a));
+const isDrawing = a => /draw|withdraw|dividend/.test(`${a.name} ${a.type}`.toLowerCase());
+
+// Net debit balance per account (debit positive, credit negative) for entries that pass the filter.
+// Statements always use adjusted figures (transactions + adjustments).
+function balancesWhere(filter){
+  const b={};accounts.forEach(a=>b[a.code]=0);
+  transactions.concat(adjustments).filter(filter).forEach(t=>{
+    b[t.debit]=(b[t.debit]||0)+Number(t.amount);
+    b[t.credit]=(b[t.credit]||0)-Number(t.amount);
+  });
+  return b;
+}
+const inPeriod=t=>(!period.from||t.date>=period.from)&&(!period.to||t.date<=period.to);
+const beforePeriod=t=>!!period.from&&t.date<period.from;
+const byCode=(a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true});
+const sum=list=>list.reduce((s,x)=>s+x.v,0);
+const visible=v=>Math.abs(v)>=0.005;
+
+function computeStatements(){
+  const bal=balancesWhere(inPeriod);
+  const revenues=accounts.filter(isRevenue).sort(byCode).map(a=>({a,v:-(bal[a.code]||0)})).filter(x=>visible(x.v));
+  const expenses=accounts.filter(isExpense).sort(byCode).map(a=>({a,v:bal[a.code]||0})).filter(x=>visible(x.v));
+  const totalRevenue=sum(revenues),totalExpenses=sum(expenses),netIncome=totalRevenue-totalExpenses;
+
+  // Beginning capital = everything that has accumulated in equity, revenue and expense accounts before the period
+  let beginning=0;
+  if(period.from){
+    const before=balancesWhere(beforePeriod);
+    beginning=-accounts.filter(a=>isEquity(a)||isRevenue(a)||isExpense(a)).reduce((s,a)=>s+(before[a.code]||0),0);
+  }
+  const investments=accounts.filter(a=>isEquity(a)&&!isDrawing(a)).sort(byCode).map(a=>({a,v:-(bal[a.code]||0)})).filter(x=>visible(x.v));
+  const drawings=accounts.filter(a=>isEquity(a)&&isDrawing(a)).sort(byCode).map(a=>({a,v:bal[a.code]||0})).filter(x=>visible(x.v));
+  const totalInvestments=sum(investments),totalDrawings=sum(drawings);
+  const ending=beginning+totalInvestments+netIncome-totalDrawings;
+  return {revenues,expenses,totalRevenue,totalExpenses,netIncome,beginning,investments,drawings,totalInvestments,totalDrawings,ending};
+}
+
+function periodLabel(){
+  const f=period.from,t=period.to;
+  if(f&&t)return `For the period ${f} to ${t}`;
+  if(f)return `From ${f} onward`;
+  if(t)return `Up to ${t}`;
+  return 'For all recorded dates';
+}
+const stmtRow=(label,amount,cls='')=>`<tr class="${cls}"><td>${label}</td><td class="number">${amount}</td></tr>`;
+const stmtLines=list=>list.map(x=>stmtRow(`<span class="stmt-indent">${escapeHtml(x.a.code)} — ${escapeHtml(x.a.name)}</span>`,money(x.v))).join('');
+
+function renderStatements(){
+  if(!$('income-body')||!$('equity-body'))return;
+  const s=computeStatements();
+  document.querySelectorAll('.fs-from').forEach(el=>{if(el.value!==period.from)el.value=period.from});
+  document.querySelectorAll('.fs-to').forEach(el=>{if(el.value!==period.to)el.value=period.to});
+  document.querySelectorAll('.stmt-period').forEach(el=>el.textContent=periodLabel());
+  const loss=s.netIncome<0,netLabel=loss?'Net Loss':'Net Income';
+
+  $('income-revenues').textContent=money(s.totalRevenue);
+  $('income-expenses').textContent=money(s.totalExpenses);
+  $('income-net-label').textContent=netLabel;
+  $('income-net').textContent=money(Math.abs(s.netIncome));
+  $('income-body').innerHTML=
+    stmtRow('Revenues','','stmt-head')+
+    (s.revenues.length?stmtLines(s.revenues):stmtRow('<span class="stmt-indent stmt-muted">No revenue recorded</span>',''))+
+    stmtRow('Total Revenues',money(s.totalRevenue),'stmt-total')+
+    stmtRow('Expenses','','stmt-head')+
+    (s.expenses.length?stmtLines(s.expenses):stmtRow('<span class="stmt-indent stmt-muted">No expenses recorded</span>',''))+
+    stmtRow('Total Expenses',money(s.totalExpenses),'stmt-total')+
+    stmtRow(netLabel,money(Math.abs(s.netIncome)),'stmt-grand '+(loss?'stmt-loss':'stmt-profit'));
+
+  $('equity-beginning').textContent=money(s.beginning);
+  $('equity-net-label').textContent=netLabel;
+  $('equity-net').textContent=money(Math.abs(s.netIncome));
+  $('equity-ending').textContent=money(s.ending);
+  $('equity-body').innerHTML=
+    stmtRow("Owner's capital, beginning",money(s.beginning),'stmt-total')+
+    (s.investments.length?stmtRow('Add: Investments','','stmt-head')+stmtLines(s.investments):'')+
+    stmtRow(loss?'Less: Net Loss':'Add: Net Income',money(Math.abs(s.netIncome)))+
+    (s.drawings.length?stmtRow('Less: Drawings','','stmt-head')+stmtLines(s.drawings):'')+
+    stmtRow("Owner's capital, ending",money(s.ending),'stmt-grand');
+}
+
+function initStatementControls(){
+  document.querySelectorAll('.fs-from').forEach(el=>el.addEventListener('change',e=>{period.from=e.target.value;renderStatements()}));
+  document.querySelectorAll('.fs-to').forEach(el=>el.addEventListener('change',e=>{period.to=e.target.value;renderStatements()}));
+  document.querySelectorAll('.fs-clear').forEach(el=>el.addEventListener('click',()=>{period.from='';period.to='';renderStatements()}));
+
+  $('export-income').addEventListener('click',()=>{
+    const s=computeStatements(),n=x=>x.toFixed(2);
+    const rows=[['Income Statement',periodLabel()],['Account','Amount (PHP)'],['Revenues','']];
+    s.revenues.forEach(x=>rows.push([`${x.a.code} ${x.a.name}`,n(x.v)]));
+    rows.push(['Total Revenues',n(s.totalRevenue)],['Expenses','']);
+    s.expenses.forEach(x=>rows.push([`${x.a.code} ${x.a.name}`,n(x.v)]));
+    rows.push(['Total Expenses',n(s.totalExpenses)],[s.netIncome<0?'Net Loss':'Net Income',n(Math.abs(s.netIncome))]);
+    downloadCSV('income-statement.csv',rows);
+  });
+  $('export-equity').addEventListener('click',()=>{
+    const s=computeStatements(),n=x=>x.toFixed(2);
+    const rows=[["Statement of Owner's Equity",periodLabel()],['Item','Amount (PHP)'],["Owner's capital, beginning",n(s.beginning)]];
+    s.investments.forEach(x=>rows.push([`Add: ${x.a.code} ${x.a.name}`,n(x.v)]));
+    rows.push([s.netIncome<0?'Less: Net Loss':'Add: Net Income',n(Math.abs(s.netIncome))]);
+    s.drawings.forEach(x=>rows.push([`Less: ${x.a.code} ${x.a.name}`,n(x.v)]));
+    rows.push(["Owner's capital, ending",n(s.ending)]);
+    downloadCSV('owners-equity.csv',rows);
+  });
+}
 
 // ---------- Authentication ----------
-let loginEl, logoutBtn;
+// The sign-in form and Sign out button live in index.html; this wires them up.
+let signUpMode=false;
+function setAuthMode(on){
+  signUpMode=on;
+  $('login-title').textContent=on?'Create account':'Sign in';
+  $('login-submit').textContent=on?'Create account':'Sign in';
+  $('login-toggle').textContent=on?'Already have an account? Sign in':'No account yet? Create one';
+  $('login-password').autocomplete=on?'new-password':'current-password';
+  setAuthMessage('');
+}
+function setAuthMessage(text,ok=false){const el=$('login-error');el.textContent=text;el.classList.toggle('ok',ok)}
 
-function buildAuthUI(){
-  loginEl=document.createElement('div');
-  loginEl.style.cssText='position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:Canvas;padding:16px';
-  loginEl.innerHTML=`
-    <form id="login-form" style="width:100%;max-width:360px;display:flex;flex-direction:column;gap:12px;color:CanvasText;font-family:inherit">
-      <h2 id="login-title" style="margin:0 0 4px">Sign in</h2>
-      <label style="display:flex;flex-direction:column;gap:4px;font-size:14px">Email
-        <input id="login-email" type="email" autocomplete="username" required style="padding:10px;font:inherit;border:1px solid GrayText;border-radius:8px">
-      </label>
-      <label style="display:flex;flex-direction:column;gap:4px;font-size:14px">Password
-        <input id="login-password" type="password" autocomplete="current-password" required style="padding:10px;font:inherit;border:1px solid GrayText;border-radius:8px">
-      </label>
-      <button id="login-submit" type="submit" style="padding:10px;font:inherit;font-weight:600;border-radius:8px;cursor:pointer">Sign in</button>
-      <p id="login-error" style="margin:0;color:#c0392b;font-size:14px;min-height:1.2em"></p>
-      <button id="login-toggle" type="button" style="background:none;border:none;padding:0;font:inherit;font-size:14px;text-decoration:underline;cursor:pointer;color:inherit;text-align:left">No account yet? Create one</button>
-    </form>`;
-  document.body.appendChild(loginEl);
-
-  logoutBtn=document.createElement('button');
-  logoutBtn.textContent='Sign out';
-  logoutBtn.style.cssText='position:fixed;top:10px;right:10px;z-index:9000;display:none;padding:6px 12px;font:inherit;font-size:13px;border-radius:8px;cursor:pointer';
-  document.body.appendChild(logoutBtn);
-
-  let signUpMode=false;
-  function setMode(on){
-    signUpMode=on;
-    $('login-title').textContent=on?'Create account':'Sign in';
-    $('login-submit').textContent=on?'Create account':'Sign in';
-    $('login-toggle').textContent=on?'Already have an account? Sign in':'No account yet? Create one';
-    $('login-password').autocomplete=on?'new-password':'current-password';
-    $('login-error').textContent='';
-  }
-  $('login-toggle').addEventListener('click',()=>setMode(!signUpMode));
-
+function initAuthUI(){
+  $('login-toggle').addEventListener('click',()=>setAuthMode(!signUpMode));
+  $('logout-btn').addEventListener('click',()=>supabaseClient.auth.signOut());
   $('login-form').addEventListener('submit',async e=>{
     e.preventDefault();
-    const btn=$('login-submit'),err=$('login-error'),label=btn.textContent;
+    const btn=$('login-submit'),label=btn.textContent;
     const email=$('login-email').value.trim(),password=$('login-password').value;
-    err.style.color='#c0392b';err.textContent='';btn.disabled=true;btn.textContent='Please wait…';
+    setAuthMessage('');btn.disabled=true;btn.textContent='Please wait…';
+    const done=()=>{btn.disabled=false;btn.textContent=label};
     if(signUpMode){
-      if(password.length<6){btn.disabled=false;btn.textContent=label;err.textContent='Password must be at least 6 characters.';return}
+      if(password.length<6){done();return setAuthMessage('Password must be at least 6 characters.')}
       const {data,error}=await supabaseClient.auth.signUp({email,password});
-      btn.disabled=false;btn.textContent=label;
-      if(error){err.textContent=error.message;return}
-      if(!data.session){
-        // Email confirmation is turned on in Supabase
-        err.style.color='#2e8b57';
-        err.textContent='Account created. Check your email to confirm it, then sign in.';
-        setMode(false);
-        err.style.color='#2e8b57';
-        err.textContent='Account created. Check your email to confirm it, then sign in.';
-        return;
+      done();
+      if(error)return setAuthMessage(error.message);
+      if(!data.session){ // email confirmation is turned on in Supabase
+        setAuthMode(false);
+        return setAuthMessage('Account created. Check your email to confirm it, then sign in.',true);
       }
       $('login-form').reset();
       return; // signed in automatically; onAuthStateChange handles the rest
     }
     const {error}=await supabaseClient.auth.signInWithPassword({email,password});
-    btn.disabled=false;btn.textContent=label;
-    if(error){err.textContent=error.message;return}
+    done();
+    if(error)return setAuthMessage(error.message);
     $('login-form').reset();
   });
-  logoutBtn.addEventListener('click',()=>supabaseClient.auth.signOut());
 }
 
-function showLogin(){loginEl.style.display='flex';logoutBtn.style.display='none';setTimeout(()=>$('login-email').focus(),0)}
-function showApp(){loginEl.style.display='none';logoutBtn.style.display='block'}
+function showLogin(){$('auth-overlay').classList.add('show');$('logout-btn').classList.add('hidden');setTimeout(()=>$('login-email').focus(),0)}
+function showApp(){$('auth-overlay').classList.remove('show');$('logout-btn').classList.remove('hidden')}
 
 async function startApp(){
   showApp();
@@ -239,7 +326,8 @@ function clearData(){accounts=[];transactions=[];adjustments=[];renderAll()}
 
 // ---------- Startup ----------
 (async function init(){
-  buildAuthUI();
+  initAuthUI();
+  initStatementControls();
   renderAll();
   let started=false;
   supabaseClient.auth.onAuthStateChange((event,session)=>{

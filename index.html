@@ -11,8 +11,9 @@
     <div class="brand-mark">A</div>
     <div>
       <h1>Accounting Management System</h1>
-      <p>Manage accounts, transactions, trial balance, and adjustments.</p>
+      <p>Manage accounts, transactions, trial balance, adjustments, and financial statements.</p>
     </div>
+    <button class="secondary-button hidden" id="logout-btn" type="button">Sign out</button>
   </header>
 
   <nav class="nav-tabs" aria-label="Main navigation">
@@ -20,6 +21,8 @@
     <button class="nav-button" data-page="transactions">Business Transactions</button>
     <button class="nav-button" data-page="trial">Trial Balance</button>
     <button class="nav-button" data-page="adjustments">Adjustments</button>
+    <button class="nav-button" data-page="income">Income Statement</button>
+    <button class="nav-button" data-page="equity">Owner's Equity</button>
   </nav>
 
   <main>
@@ -101,10 +104,55 @@
         <div class="table-scroll"><table><thead><tr><th>Date</th><th>Description</th><th>Debit Account</th><th>Credit Account</th><th class="number">Amount</th><th>Action</th></tr></thead><tbody id="adjustments-body"></tbody></table></div>
       </div>
     </section>
+    <section class="page" id="income">
+      <div class="section-heading">
+        <div><h2>Income Statement</h2><p>Revenues and expenses for the period, using adjusted balances.</p></div>
+        <button class="secondary-button" id="export-income">Export CSV</button>
+      </div>
+      <div class="summary-row">
+        <div class="summary-card"><span>Total Revenues</span><strong id="income-revenues">₱0.00</strong></div>
+        <div class="summary-card"><span>Total Expenses</span><strong id="income-expenses">₱0.00</strong></div>
+        <div class="summary-card"><span id="income-net-label">Net Income</span><strong id="income-net">₱0.00</strong></div>
+      </div>
+      <div class="panel">
+        <div class="table-top"><strong class="stmt-period"></strong><div class="period-controls"><label>From<input type="date" class="fs-from"></label><label>To<input type="date" class="fs-to"></label><button type="button" class="secondary-button fs-clear">Clear</button></div></div>
+        <div class="table-scroll"><table><thead><tr><th>Account</th><th class="number">Amount (₱)</th></tr></thead><tbody id="income-body"></tbody></table></div>
+        <p class="balance-message">Leave the dates blank to include every recorded entry.</p>
+      </div>
+    </section>
+
+    <section class="page" id="equity">
+      <div class="section-heading">
+        <div><h2>Statement of Owner's Equity</h2><p>Changes in the owner's capital during the period.</p></div>
+        <button class="secondary-button" id="export-equity">Export CSV</button>
+      </div>
+      <div class="summary-row">
+        <div class="summary-card"><span>Beginning Capital</span><strong id="equity-beginning">₱0.00</strong></div>
+        <div class="summary-card"><span id="equity-net-label">Net Income</span><strong id="equity-net">₱0.00</strong></div>
+        <div class="summary-card"><span>Ending Capital</span><strong id="equity-ending">₱0.00</strong></div>
+      </div>
+      <div class="panel">
+        <div class="table-top"><strong class="stmt-period"></strong><div class="period-controls"><label>From<input type="date" class="fs-from"></label><label>To<input type="date" class="fs-to"></label><button type="button" class="secondary-button fs-clear">Clear</button></div></div>
+        <div class="table-scroll"><table><thead><tr><th>Item</th><th class="number">Amount (₱)</th></tr></thead><tbody id="equity-body"></tbody></table></div>
+        <p class="balance-message">Equity accounts with “Draw”, “Withdraw” or “Dividend” in the name are treated as drawings. Other equity accounts count as investments.</p>
+      </div>
+    </section>
   </main>
 
   <footer>Accounting Management System <span>Educational use</span></footer>
   <div class="toast" id="toast" role="status"></div>
+
+  <div class="auth-overlay" id="auth-overlay">
+    <form class="auth-card" id="login-form">
+      <div class="auth-brand"><div class="brand-mark">A</div><div><h2 id="login-title">Sign in</h2><p>Accounting Management System</p></div></div>
+      <label>Email<input id="login-email" type="email" autocomplete="username" required></label>
+      <label>Password<input id="login-password" type="password" autocomplete="current-password" required></label>
+      <p class="auth-error" id="login-error" role="alert"></p>
+      <button class="primary-button auth-submit" id="login-submit" type="submit">Sign in</button>
+      <button class="link-button" id="login-toggle" type="button">No account yet? Create one</button>
+    </form>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="script.js"></script>
 
