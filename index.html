@@ -17,7 +17,8 @@
   </header>
 
   <nav class="nav-tabs" aria-label="Main navigation">
-    <button class="nav-button active" data-page="accounts">Chart of Accounts</button>
+    <button class="nav-button active" data-page="dashboard">Dashboard</button>
+    <button class="nav-button" data-page="accounts">Chart of Accounts</button>
     <button class="nav-button" data-page="transactions">Business Transactions</button>
     <button class="nav-button" data-page="trial">Trial Balance</button>
     <button class="nav-button" data-page="adjustments">Adjustments</button>
@@ -26,7 +27,30 @@
   </nav>
 
   <main>
-    <section class="page active" id="accounts">
+    <section class="page active" id="dashboard">
+      <div class="section-heading">
+        <div><h2>Dashboard</h2><p>A quick overview of your books.</p></div>
+      </div>
+      <div class="dash-grid">
+        <div class="summary-card"><span>Total Transactions</span><strong id="dash-total">0</strong></div>
+        <div class="summary-card"><span>Recorded</span><strong class="dash-green" id="dash-recorded">0</strong></div>
+        <div class="summary-card"><span>Pending</span><strong class="dash-amber" id="dash-pending">0</strong></div>
+        <div class="summary-card"><span>Original Journal Entries</span><strong id="dash-original">0</strong></div>
+        <div class="summary-card"><span>Adjusting Entries</span><strong id="dash-adjusting">0</strong></div>
+        <div class="summary-card"><span>Trial Balance Status</span><strong id="dash-trial">—</strong></div>
+        <div class="summary-card"><span id="dash-net-label">Net Income</span><strong id="dash-net">₱0.00</strong></div>
+      </div>
+      <div class="panel">
+        <strong>Recorded vs. pending</strong>
+        <p class="dash-sub">Share of all transactions that have balanced journal entries posted.</p>
+        <div class="donut-wrap">
+          <div class="donut" id="dash-donut" role="img" aria-label="Recorded versus pending transactions"></div>
+          <ul class="donut-legend" id="dash-legend"></ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="accounts">
       <div class="section-heading">
         <div><h2>Chart of Accounts</h2><p>Set up the accounts your business uses.</p></div>
         <button class="primary-button" id="show-account-form">+ Add Account</button>

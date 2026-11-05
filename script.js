@@ -153,7 +153,7 @@ $('trial-mode').addEventListener('change',renderTrial);
 function downloadCSV(filename,rows){const csv=rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n'),blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url)}
 $('export-trial').addEventListener('click',()=>{const b=getBalances($('trial-mode').value==='adjusted'),rows=[['Account Code','Account Name','Debit (PHP)','Credit (PHP)']];let td=0,tc=0;accounts.slice().sort((a,c)=>a.code.localeCompare(c.code,undefined,{numeric:true})).forEach(a=>{const v=b[a.code]||0,d=Math.max(v,0),c=Math.max(-v,0);td+=d;tc+=c;rows.push([a.code,a.name,d?d.toFixed(2):'',c?c.toFixed(2):''])});rows.push(['','TOTAL',td.toFixed(2),tc.toFixed(2)]);downloadCSV('trial-balance.csv',rows)});
 
-function renderAll(){renderAccounts();renderEntries('transaction');renderEntries('adjustment');renderTrial();renderStatements()}
+function renderAll(){renderAccounts();renderEntries('transaction');renderEntries('adjustment');renderTrial();renderStatements();renderDashboard()}
 
 // ---------- Financial statements (Income Statement & Statement of Owner's Equity) ----------
 const period = {from:'', to:''};
@@ -266,6 +266,51 @@ function initStatementControls(){
     rows.push(["Owner's capital, ending",n(s.ending)]);
     downloadCSV('owners-equity.csv',rows);
   });
+}
+
+// ---------- Dashboard ----------
+function renderDashboard(){
+  if(!$('dash-total'))return;
+  const all=transactions.concat(adjustments),known=new Set(accounts.map(a=>a.code));
+  // An entry counts as "recorded" when it is a complete, balanced debit/credit pair on existing accounts
+  const isRecorded=t=>known.has(t.debit)&&known.has(t.credit)&&t.debit!==t.credit&&Number(t.amount)>0;
+  const total=all.length,recorded=all.filter(isRecorded).length,pending=total-recorded;
+
+  $('dash-total').textContent=total;
+  $('dash-recorded').textContent=recorded;
+  $('dash-pending').textContent=pending;
+  $('dash-original').textContent=transactions.length;
+  $('dash-adjusting').textContent=adjustments.length;
+
+  // Trial balance status (adjusted)
+  const bal=getBalances(true);let td=0,tc=0;
+  accounts.forEach(a=>{const v=bal[a.code]||0;td+=Math.max(v,0);tc+=Math.max(-v,0)});
+  const trial=$('dash-trial');
+  trial.classList.remove('dash-green','dash-red');
+  if(!total){trial.textContent='No entries yet'}
+  else if(Math.abs(td-tc)<.005){trial.textContent='Balanced ✓';trial.classList.add('dash-green')}
+  else{trial.textContent='Out of balance';trial.classList.add('dash-red')}
+  trial.style.fontSize='18px';
+
+  // Net income across all dates
+  const all0=balancesWhere(()=>true);
+  const net=accounts.filter(isRevenue).reduce((s,a)=>s-(all0[a.code]||0),0)-accounts.filter(isExpense).reduce((s,a)=>s+(all0[a.code]||0),0);
+  $('dash-net-label').textContent=net<0?'Net Loss':'Net Income';
+  $('dash-net').textContent=money(Math.abs(net));
+  $('dash-net').classList.toggle('dash-red',net<0);
+
+  // Donut chart (plain SVG, no library needed)
+  const R=60,C=2*Math.PI*R,rf=total?recorded/total:0,pf=total?pending/total:0;
+  const ring=(color,len,offset)=>`<circle cx="80" cy="80" r="${R}" fill="none" stroke="${color}" stroke-width="22" stroke-dasharray="${len} ${C}" stroke-dashoffset="${offset}" transform="rotate(-90 80 80)"/>`;
+  const pr=total?Math.round(rf*100):0,pp=total?100-pr:0;
+  $('dash-donut').innerHTML=
+    `<svg viewBox="0 0 160 160" aria-hidden="true"><circle cx="80" cy="80" r="${R}" fill="none" stroke="#e8edf5" stroke-width="22"/>`+
+    (recorded?ring('#177c60',rf*C,0):'')+
+    (pending?ring('#b7791f',pf*C,-rf*C):'')+
+    `</svg><div class="donut-center">${total?`${pr}% recorded`:'No entries yet'}</div>`;
+  $('dash-legend').innerHTML=
+    `<li><i style="background:#177c60"></i>Recorded — ${recorded} (${pr}%)</li>`+
+    `<li><i style="background:#b7791f"></i>Pending — ${pending} (${pp}%)</li>`;
 }
 
 // ---------- Authentication ----------
