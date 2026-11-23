@@ -153,7 +153,7 @@ $('trial-mode').addEventListener('change',renderTrial);
 function downloadCSV(filename,rows){const csv=rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n'),blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url)}
 $('export-trial').addEventListener('click',()=>{const b=getBalances($('trial-mode').value==='adjusted'),rows=[['Account Code','Account Name','Debit (PHP)','Credit (PHP)']];let td=0,tc=0;accounts.slice().sort((a,c)=>a.code.localeCompare(c.code,undefined,{numeric:true})).forEach(a=>{const v=b[a.code]||0,d=Math.max(v,0),c=Math.max(-v,0);td+=d;tc+=c;rows.push([a.code,a.name,d?d.toFixed(2):'',c?c.toFixed(2):''])});rows.push(['','TOTAL',td.toFixed(2),tc.toFixed(2)]);downloadCSV('trial-balance.csv',rows)});
 
-function renderAll(){renderAccounts();renderEntries('transaction');renderEntries('adjustment');renderTrial();renderStatements();renderDashboard()}
+function renderAll(){renderAccounts();renderEntries('transaction');renderEntries('adjustment');renderTrial();renderStatements();renderPosition();renderCashflow();renderDashboard()}
 
 // ---------- Financial statements (Income Statement & Statement of Owner's Equity) ----------
 const period = {from:'', to:''};
@@ -268,6 +268,60 @@ function initStatementControls(){
   });
 }
 
+
+// ---------- Statement of Financial Position & Cash Flows ----------
+const positionDate={to:''}, cashPeriod={from:'',to:''};
+function balanceAt(date){
+  const b={};accounts.forEach(a=>b[a.code]=0);
+  transactions.concat(adjustments).filter(t=>!date||t.date<=date).forEach(t=>{
+    b[t.debit]=(b[t.debit]||0)+Number(t.amount);b[t.credit]=(b[t.credit]||0)-Number(t.amount);
+  });return b;
+}
+function renderPosition(){
+  const b=balanceAt(positionDate.to);
+  const assets=accounts.filter(a=>normType(a)==='asset').sort(byCode).map(a=>({a,v:b[a.code]||0})).filter(x=>visible(x.v));
+  const liabilities=accounts.filter(a=>normType(a)==='liability').sort(byCode).map(a=>({a,v:-(b[a.code]||0)})).filter(x=>visible(x.v));
+  const equity=accounts.filter(isEquity).sort(byCode).map(a=>({a,v:-(b[a.code]||0)})).filter(x=>visible(x.v));
+  const net=accounts.filter(isRevenue).reduce((s,a)=>s-(b[a.code]||0),0)-accounts.filter(isExpense).reduce((s,a)=>s+(b[a.code]||0),0);
+  const drawings=equity.filter(x=>isDrawing(x.a)).reduce((s,x)=>s+x.v,0);
+  const capital=equity.filter(x=>!isDrawing(x.a));
+  const totalAssets=sum(assets),totalLiabilities=sum(liabilities),totalEquity=sum(capital)+net-drawings;
+  $('position-period').textContent=positionDate.to?'As of '+positionDate.to:'As of all recorded dates';
+  $('position-body').innerHTML=stmtRow('Assets','','stmt-head')+(assets.length?stmtLines(assets):stmtRow('<span class="stmt-indent stmt-muted">No asset balances</span>',''))+stmtRow('Total Assets',money(totalAssets),'stmt-total')+
+    stmtRow('Liabilities','','stmt-head')+(liabilities.length?stmtLines(liabilities):stmtRow('<span class="stmt-indent stmt-muted">No liability balances</span>',''))+stmtRow('Total Liabilities',money(totalLiabilities),'stmt-total')+
+    stmtRow("Owner's Equity",'','stmt-head')+(capital.length?stmtLines(capital):stmtRow('<span class="stmt-indent stmt-muted">No capital balances</span>',''))+stmtRow(net<0?'Less: Net Loss':'Add: Net Income',money(Math.abs(net)))+(drawings?stmtRow('Less: Drawings',money(drawings)):'')+stmtRow('Total Owner’s Equity',money(totalEquity),'stmt-total')+stmtRow('Total Liabilities and Equity',money(totalLiabilities+totalEquity),'stmt-grand');
+  const diff=totalAssets-totalLiabilities-totalEquity;
+  $('position-message').textContent=Math.abs(diff)<.005?'Statement balances.':'Difference: '+money(diff)+' — review account classifications and balances.';
+  $('position-message').classList.toggle('good',Math.abs(diff)<.005);
+}
+function isCashAccount(a){return /cash|bank/i.test(a.name)}
+function renderCashflow(){
+  const cashAccounts=accounts.filter(isCashAccount),cashCodes=new Set(cashAccounts.map(a=>a.code));
+  const rows=transactions.filter(t=>(!cashPeriod.from||t.date>=cashPeriod.from)&&(!cashPeriod.to||t.date<=cashPeriod.to));
+  let operating=0,investing=0,financing=0;
+  rows.forEach(t=>{
+    const debitCash=cashCodes.has(t.debit),creditCash=cashCodes.has(t.credit);
+    if(debitCash===creditCash)return;
+    const other=accounts.find(a=>a.code===(debitCash?t.credit:t.debit));if(!other)return;
+    const flow=(debitCash?1:-1)*Number(t.amount),typ=normType(other);
+    if(typ==='asset'&&!isCashAccount(other))investing+=flow;
+    else if(typ==='liability'||typ==='equity')financing+=flow;
+    else operating+=flow;
+  });
+  const net=operating+investing+financing;
+  const f=cashPeriod.from,t=cashPeriod.to;
+  $('cashflow-period').textContent=f&&t?`For ${f} to ${t}`:f?`From ${f} onward`:t?`Up to ${t}`:'For all recorded dates';
+  $('cashflow-body').innerHTML=stmtRow('Operating Activities','','stmt-head')+stmtRow('Net Cash from Operating Activities',money(operating),'stmt-total')+stmtRow('Investing Activities','','stmt-head')+stmtRow('Net Cash from Investing Activities',money(investing),'stmt-total')+stmtRow('Financing Activities','','stmt-head')+stmtRow('Net Cash from Financing Activities',money(financing),'stmt-total')+stmtRow('Net Increase (Decrease) in Cash',money(net),'stmt-grand');
+}
+function initExtraStatements(){
+  $('position-date').addEventListener('change',e=>{positionDate.to=e.target.value;renderPosition()});
+  $('position-clear').addEventListener('click',()=>{positionDate.to='';$('position-date').value='';renderPosition()});
+  ['cash-from','cash-to'].forEach(id=>$(id).addEventListener('change',e=>{cashPeriod[id==='cash-from'?'from':'to']=e.target.value;renderCashflow()}));
+  $('cash-clear').addEventListener('click',()=>{cashPeriod.from='';cashPeriod.to='';$('cash-from').value='';$('cash-to').value='';renderCashflow()});
+  $('export-position').addEventListener('click',()=>downloadCSV('statement-of-financial-position.csv',[['Statement of Financial Position',$('position-period').textContent],['Item','Amount (PHP)'],...Array.from($('position-body').rows).map(r=>[r.cells[0].innerText,r.cells[1].innerText])]));
+  $('export-cashflow').addEventListener('click',()=>downloadCSV('statement-of-cash-flows.csv',[['Statement of Cash Flows',$('cashflow-period').textContent],['Item','Amount (PHP)'],...Array.from($('cashflow-body').rows).map(r=>[r.cells[0].innerText,r.cells[1].innerText])]));
+}
+
 // ---------- Dashboard ----------
 function renderDashboard(){
   if(!$('dash-total'))return;
@@ -373,6 +427,7 @@ function clearData(){accounts=[];transactions=[];adjustments=[];renderAll()}
 (async function init(){
   initAuthUI();
   initStatementControls();
+  initExtraStatements();
   renderAll();
   let started=false;
   supabaseClient.auth.onAuthStateChange((event,session)=>{

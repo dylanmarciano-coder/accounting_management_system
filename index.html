@@ -24,6 +24,8 @@
     <button class="nav-button" data-page="adjustments">Adjustments</button>
     <button class="nav-button" data-page="income">Income Statement</button>
     <button class="nav-button" data-page="equity">Owner's Equity</button>
+    <button class="nav-button" data-page="position">Financial Position</button>
+    <button class="nav-button" data-page="cashflow">Cash Flows</button>
   </nav>
 
   <main>
@@ -160,6 +162,17 @@
         <div class="table-scroll"><table><thead><tr><th>Item</th><th class="number">Amount (₱)</th></tr></thead><tbody id="equity-body"></tbody></table></div>
         <p class="balance-message">Equity accounts with “Draw”, “Withdraw” or “Dividend” in the name are treated as drawings. Other equity accounts count as investments.</p>
       </div>
+    </section>
+
+    <section class="page" id="position">
+      <div class="section-heading"><div><h2>Statement of Financial Position</h2><p>Assets, liabilities, and owner's equity as of a selected date.</p></div><button class="secondary-button" id="export-position">Export CSV</button></div>
+      <div class="panel"><div class="table-top"><strong id="position-period">As of all recorded dates</strong><div class="period-controls"><label>As of<input type="date" id="position-date"></label><button type="button" class="secondary-button" id="position-clear">Clear</button></div></div>
+      <div class="table-scroll"><table><thead><tr><th>Account</th><th class="number">Amount (₱)</th></tr></thead><tbody id="position-body"></tbody></table></div><p class="balance-message" id="position-message"></p></div>
+    </section>
+    <section class="page" id="cashflow">
+      <div class="section-heading"><div><h2>Statement of Cash Flows</h2><p>Cash inflows and outflows classified as operating, investing, and financing activities.</p></div><button class="secondary-button" id="export-cashflow">Export CSV</button></div>
+      <div class="panel"><div class="table-top"><strong id="cashflow-period">For all recorded dates</strong><div class="period-controls"><label>From<input type="date" id="cash-from"></label><label>To<input type="date" id="cash-to"></label><button type="button" class="secondary-button" id="cash-clear">Clear</button></div></div>
+      <div class="table-scroll"><table><thead><tr><th>Item</th><th class="number">Amount (₱)</th></tr></thead><tbody id="cashflow-body"></tbody></table></div><p class="balance-message">Cash accounts are identified by account names containing “cash” or “bank”. Cash flows are calculated from original transactions; adjusting entries are excluded.</p></div>
     </section>
   </main>
 
