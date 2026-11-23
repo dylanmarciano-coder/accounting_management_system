@@ -153,7 +153,26 @@ $('trial-mode').addEventListener('change',renderTrial);
 function downloadCSV(filename,rows){const csv=rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n'),blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url)}
 $('export-trial').addEventListener('click',()=>{const b=getBalances($('trial-mode').value==='adjusted'),rows=[['Account Code','Account Name','Debit (PHP)','Credit (PHP)']];let td=0,tc=0;accounts.slice().sort((a,c)=>a.code.localeCompare(c.code,undefined,{numeric:true})).forEach(a=>{const v=b[a.code]||0,d=Math.max(v,0),c=Math.max(-v,0);td+=d;tc+=c;rows.push([a.code,a.name,d?d.toFixed(2):'',c?c.toFixed(2):''])});rows.push(['','TOTAL',td.toFixed(2),tc.toFixed(2)]);downloadCSV('trial-balance.csv',rows)});
 
-function renderAll(){renderAccounts();renderEntries('transaction');renderEntries('adjustment');renderTrial();renderStatements();renderPosition();renderCashflow();renderDashboard()}
+function renderAll(){
+    const renderFunctions = [
+        renderAccounts,
+        () => renderEntries('transaction'),
+        () => renderEntries('adjustment'),
+        renderTrial,
+        renderStatements,
+        renderPosition,
+        renderCashflow,
+        renderDashboard
+    ];
+
+    renderFunctions.forEach(fn => {
+        try {
+            fn();
+        } catch (error) {
+            console.error(`Error in ${fn.name || 'render function'}:`, error);
+        }
+    });
+}
 
 // ---------- Financial statements (Income Statement & Statement of Owner's Equity) ----------
 const period = {from:'', to:''};
