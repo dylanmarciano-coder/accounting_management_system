@@ -81,7 +81,7 @@ function fillAccountOptions(){['transaction-debit','transaction-credit','adjustm
 function renderAccounts(){
  const q=$('account-search').value.toLowerCase(),list=accounts.filter(a=>`${a.code} ${a.name} ${a.type}`.toLowerCase().includes(q));
  $('account-count').textContent=`${list.length} account${list.length===1?'':'s'}`;
- $('accounts-body').innerHTML=list.length?list.slice().sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true})).map(a=>`<tr><td>${escapeHtml(a.code)}</td><td><strong>${escapeHtml(a.name)}</strong></td><td><span class="type-tag ${typeClass(a.type)}">${escapeHtml(a.type)}</span></td><td>${['Asset','Expense'].includes(a.type)?'Debit':'Credit'}</td><td><button class="row-action" data-delete-account="${escapeHtml(a.code)}">Delete</button></td></tr>`).join(''):'<tr><td colspan="5" class="empty-state">No accounts yet. Select “Add Account” to begin.</td></tr>';
+ $('accounts-body').innerHTML=list.length?list.slice().sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true})).map(a=>`<tr><td>${escapeHtml(a.code)}</td><td><strong>${escapeHtml(a.name)}</strong></td><td><span class="type-tag ${typeClass(a.type)}">${escapeHtml(a.type)}</span></td><td>${['Asset','Expense'].includes(a.type)?'Debit':'Credit'}</td><td><button class="row-action edit" data-edit-account="${escapeHtml(a.code)}">Edit</button><button class="row-action" data-delete-account="${escapeHtml(a.code)}">Delete</button></td></tr>`).join(''):'<tr><td colspan="5" class="empty-state">No accounts yet. Select “Add Account” to begin.</td></tr>';
  fillAccountOptions();
 }
 $('account-search').addEventListener('input',renderAccounts);
@@ -113,7 +113,7 @@ function renderEntries(kind){
   const adj=kind==='adjustment',list=adj?adjustments:transactions,prefix=adj?'adjustment':'transaction',q=$(prefix+'-search').value.toLowerCase(),body=$(adj?'adjustments-body':'transactions-body');
   const filtered=list.filter(t=>`${t.date} ${t.description} ${accountName(t.debit)} ${accountName(t.credit)}`.toLowerCase().includes(q));
   $(adj?'adjustment-count':'transaction-count').textContent=`${filtered.length} entr${filtered.length===1?'y':'ies'}`;
-  body.innerHTML=filtered.length?filtered.slice().sort((a,b)=>b.date.localeCompare(a.date)||String(b.id).localeCompare(String(a.id),undefined,{numeric:true})).map(t=>`<tr><td>${escapeHtml(t.date)}</td><td>${escapeHtml(t.description)}</td><td>${escapeHtml(accountName(t.debit))}</td><td>${escapeHtml(accountName(t.credit))}</td><td class="number">${money(t.amount)}</td><td><button class="row-action" data-delete-entry="${escapeHtml(t.id)}" data-kind="${kind}">Delete</button></td></tr>`).join(''):`<tr><td colspan="6" class="empty-state">No ${adj?'adjustments':'transactions'} recorded yet.</td></tr>`;
+  body.innerHTML=filtered.length?filtered.slice().sort((a,b)=>b.date.localeCompare(a.date)||String(b.id).localeCompare(String(a.id),undefined,{numeric:true})).map(t=>`<tr><td>${escapeHtml(t.date)}</td><td>${escapeHtml(t.description)}</td><td>${escapeHtml(accountName(t.debit))}</td><td>${escapeHtml(accountName(t.credit))}</td><td class="number">${money(t.amount)}</td><td><button class="row-action edit" data-edit-entry="${escapeHtml(t.id)}" data-kind="${kind}">Edit</button><button class="row-action" data-delete-entry="${escapeHtml(t.id)}" data-kind="${kind}">Delete</button></td></tr>`).join(''):`<tr><td colspan="6" class="empty-state">No ${adj?'adjustments':'transactions'} recorded yet.</td></tr>`;
 }
 $('transaction-search').addEventListener('input',()=>renderEntries('transaction'));
 $('adjustment-search').addEventListener('input',()=>renderEntries('adjustment'));
@@ -145,6 +145,62 @@ async function saveEntry(e,adj){
 }
 $('transaction-form').addEventListener('submit',e=>saveEntry(e,false));
 $('adjustment-form').addEventListener('submit',e=>saveEntry(e,true));
+
+// ---------- Edit (accounts, transactions, adjustments) ----------
+let editing=null; // {kind:'account'|'transaction'|'adjustment', id}
+function openEdit(kind,id){
+  let name,date='';
+  if(kind==='account'){
+    const a=accounts.find(x=>x.code===id);if(!a)return;
+    name=a.name;
+  }else{
+    const list=kind==='adjustment'?adjustments:transactions;
+    const t=list.find(x=>String(x.id)===String(id));if(!t)return;
+    name=t.description;date=t.date;
+  }
+  editing={kind,id};
+  $('edit-title').textContent=kind==='account'?'Edit account':kind==='adjustment'?'Edit adjustment':'Edit transaction';
+  $('edit-name-label').textContent=kind==='account'?'Account Name':'Description';
+  $('edit-date-label').classList.toggle('hidden',kind==='account');
+  $('edit-date').required=kind!=='account';
+  $('edit-date').value=date;
+  $('edit-name').value=name;
+  $('edit-overlay').classList.add('show');
+  setTimeout(()=>$('edit-name').focus(),0);
+}
+function closeEdit(){editing=null;$('edit-overlay').classList.remove('show')}
+
+$('accounts-body').addEventListener('click',e=>{
+  const b=e.target.closest('[data-edit-account]');if(b)openEdit('account',b.dataset.editAccount);
+});
+document.body.addEventListener('click',e=>{
+  const b=e.target.closest('[data-edit-entry]');if(b)openEdit(b.dataset.kind,b.dataset.editEntry);
+});
+$('edit-cancel').addEventListener('click',closeEdit);
+$('edit-overlay').addEventListener('click',e=>{if(e.target===$('edit-overlay'))closeEdit()});
+
+$('edit-form').addEventListener('submit',async e=>{
+  e.preventDefault();
+  if(!editing)return;
+  const name=$('edit-name').value.trim();
+  if(!name)return toast('Please enter a name.');
+  if(editing.kind==='account'){
+    const acc=accounts.find(a=>a.code===editing.id);if(!acc)return;
+    const {error}=await supabaseClient.from(TABLES.accounts).update({name}).eq('id',acc.id);
+    if(error){console.error(error);return toast('Could not update account: '+error.message)}
+    acc.name=name;
+  }else{
+    const adj=editing.kind==='adjustment',list=adj?adjustments:transactions;
+    const entry=list.find(t=>String(t.id)===String(editing.id));if(!entry)return;
+    const date=$('edit-date').value;
+    if(!date)return toast('Please choose a date.');
+    const col=adj?DATE_COL.adjustments:DATE_COL.transactions;
+    const {error}=await supabaseClient.from(adj?TABLES.adjustments:TABLES.transactions).update({[col]:date,description:name}).eq('id',entry.id);
+    if(error){console.error(error);return toast('Could not update entry: '+error.message)}
+    entry.date=date;entry.description=name;
+  }
+  closeEdit();renderAll();toast('Changes saved.');
+});
 
 // ---------- Trial balance ----------
 function getBalances(withAdjustments=true){const b={};accounts.forEach(a=>b[a.code]=0);(withAdjustments?transactions.concat(adjustments):transactions).forEach(t=>{b[t.debit]=(b[t.debit]||0)+Number(t.amount);b[t.credit]=(b[t.credit]||0)-Number(t.amount)});return b}
@@ -313,24 +369,52 @@ function renderPosition(){
   $('position-message').textContent=Math.abs(diff)<.005?'Statement balances.':'Difference: '+money(diff)+' — review account classifications and balances.';
   $('position-message').classList.toggle('good',Math.abs(diff)<.005);
 }
-function isCashAccount(a){return /cash|bank/i.test(a.name)}
+// Cash accounts: asset accounts named "cash" or "bank" (so "Bank Loan Payable" is not mistaken for cash)
+function isCashAccount(a){return normType(a)==='asset'&&/cash|bank/i.test(a.name)&&!/payable|loan/i.test(a.name)}
+// Working-capital accounts count as operating; other assets are investing; other liabilities and equity are financing
+const OPERATING_ASSET=/receivable|inventor|merchandise|suppl|prepaid|advance|deposit/i;
+const OPERATING_LIABILITY=/accounts payable|trade payable|salar|wage|utilit|tax|interest payable|unearned|deferred revenue|accrued|expenses payable|rent payable|customer/i;
+function cashActivity(other){
+  const typ=normType(other);
+  if(typ==='asset')return OPERATING_ASSET.test(other.name)?'operating':'investing';
+  if(typ==='liability')return OPERATING_LIABILITY.test(other.name)?'operating':'financing';
+  if(typ==='equity')return 'financing';
+  return 'operating'; // revenue and expense accounts
+}
 function renderCashflow(){
   const cashAccounts=accounts.filter(isCashAccount),cashCodes=new Set(cashAccounts.map(a=>a.code));
-  const rows=transactions.filter(t=>(!cashPeriod.from||t.date>=cashPeriod.from)&&(!cashPeriod.to||t.date<=cashPeriod.to));
-  let operating=0,investing=0,financing=0;
-  rows.forEach(t=>{
-    const debitCash=cashCodes.has(t.debit),creditCash=cashCodes.has(t.credit);
-    if(debitCash===creditCash)return;
-    const other=accounts.find(a=>a.code===(debitCash?t.credit:t.debit));if(!other)return;
-    const flow=(debitCash?1:-1)*Number(t.amount),typ=normType(other);
-    if(typ==='asset'&&!isCashAccount(other))investing+=flow;
-    else if(typ==='liability'||typ==='equity')financing+=flow;
-    else operating+=flow;
+  const {from,to}=cashPeriod;
+  const groups={operating:{},investing:{},financing:{}};
+  transactions.filter(t=>(!from||t.date>=from)&&(!to||t.date<=to)).forEach(t=>{
+    const dc=cashCodes.has(t.debit),cc=cashCodes.has(t.credit);
+    if(dc===cc)return; // not a cash entry, or a transfer between two cash accounts
+    const other=accounts.find(a=>a.code===(dc?t.credit:t.debit));if(!other)return;
+    const g=groups[cashActivity(other)];
+    g[other.code]=g[other.code]||{a:other,v:0};
+    g[other.code].v+=(dc?1:-1)*Number(t.amount);
   });
-  const net=operating+investing+financing;
-  const f=cashPeriod.from,t=cashPeriod.to;
-  $('cashflow-period').textContent=f&&t?`For ${f} to ${t}`:f?`From ${f} onward`:t?`Up to ${t}`:'For all recorded dates';
-  $('cashflow-body').innerHTML=stmtRow('Operating Activities','','stmt-head')+stmtRow('Net Cash from Operating Activities',money(operating),'stmt-total')+stmtRow('Investing Activities','','stmt-head')+stmtRow('Net Cash from Investing Activities',money(investing),'stmt-total')+stmtRow('Financing Activities','','stmt-head')+stmtRow('Net Cash from Financing Activities',money(financing),'stmt-total')+stmtRow('Net Increase (Decrease) in Cash',money(net),'stmt-grand');
+  const lines=g=>Object.values(g).filter(x=>visible(x.v)).sort((x,y)=>byCode(x.a,y.a));
+  const lineRows=(list,empty)=>list.length?list.map(x=>stmtRow(`<span class="stmt-indent">${x.v>=0?'Cash received from':'Cash paid for'} ${escapeHtml(x.a.name)}</span>`,money(x.v))).join(''):stmtRow(`<span class="stmt-indent stmt-muted">${empty}</span>`,'');
+  const op=lines(groups.operating),inv=lines(groups.investing),fin=lines(groups.financing);
+  const operating=sum(op),investing=sum(inv),financing=sum(fin),net=operating+investing+financing;
+
+  const cashBal=filter=>transactions.filter(filter).reduce((s,t)=>s+(cashCodes.has(t.debit)?Number(t.amount):0)-(cashCodes.has(t.credit)?Number(t.amount):0),0);
+  const beginning=from?cashBal(t=>t.date<from):0,ending=beginning+net;
+
+  $('cashflow-period').textContent=from&&to?`For ${from} to ${to}`:from?`From ${from} onward`:to?`Up to ${to}`:'For all recorded dates';
+  $('cashflow-body').innerHTML=
+    stmtRow('Operating Activities','','stmt-head')+lineRows(op,'No operating cash flows')+stmtRow('Net Cash from Operating Activities',money(operating),'stmt-total')+
+    stmtRow('Investing Activities','','stmt-head')+lineRows(inv,'No investing cash flows')+stmtRow('Net Cash from Investing Activities',money(investing),'stmt-total')+
+    stmtRow('Financing Activities','','stmt-head')+lineRows(fin,'No financing cash flows')+stmtRow('Net Cash from Financing Activities',money(financing),'stmt-total')+
+    stmtRow('Net Increase (Decrease) in Cash',money(net),'stmt-total')+
+    stmtRow('Cash, beginning',money(beginning))+
+    stmtRow('Cash, ending',money(ending),'stmt-grand');
+
+  // Check against the cash shown on the Statement of Financial Position for the same end date
+  const bal=balanceAt(to),positionCash=cashAccounts.reduce((s,a)=>s+(bal[a.code]||0),0),diff=ending-positionCash;
+  const ok=Math.abs(diff)<.005;
+  $('cashflow-message').textContent=(ok?'Ending cash agrees with the Statement of Financial Position. ':`Ending cash differs from the Statement of Financial Position by ${money(diff)} (check adjusting entries that touch cash). `)+'Cash accounts are asset accounts with “cash” or “bank” in the name. Flows come from original transactions only; receivables, payables, prepaid items and inventory count as operating, other assets as investing, and loans and owner’s equity as financing.';
+  $('cashflow-message').classList.toggle('good',ok);
 }
 function initExtraStatements(){
   $('position-date').addEventListener('change',e=>{positionDate.to=e.target.value;renderPosition()});
@@ -440,7 +524,7 @@ async function startApp(){
   }
 }
 
-function clearData(){accounts=[];transactions=[];adjustments=[];renderAll()}
+function clearData(){accounts=[];transactions=[];adjustments=[];closeEdit();renderAll()}
 
 // ---------- Startup ----------
 (async function init(){
