@@ -354,17 +354,19 @@ function balanceAt(date){
 }
 function renderPosition(){
   const b=balanceAt(positionDate.to);
-  const assets=accounts.filter(a=>normType(a)==='asset').sort(byCode).map(a=>({a,v:b[a.code]||0})).filter(x=>visible(x.v));
-  const liabilities=accounts.filter(a=>normType(a)==='liability').sort(byCode).map(a=>({a,v:-(b[a.code]||0)})).filter(x=>visible(x.v));
-  const equity=accounts.filter(isEquity).sort(byCode).map(a=>({a,v:-(b[a.code]||0)})).filter(x=>visible(x.v));
+  // Contra accounts (e.g. Accumulated Depreciation) always belong with assets, whatever type they were saved with
+  const assets=accounts.filter(a=>normType(a)==='asset'||isContra(a)).sort(byCode).map(a=>({a,v:b[a.code]||0})).filter(x=>visible(x.v));
+  const liabilities=accounts.filter(a=>normType(a)==='liability'&&!isContra(a)).sort(byCode).map(a=>({a,v:-(b[a.code]||0)})).filter(x=>visible(x.v));
+  const equity=accounts.filter(a=>isEquity(a)&&!isContra(a)).sort(byCode).map(a=>({a,v:-(b[a.code]||0)})).filter(x=>visible(x.v));
   const net=accounts.filter(isRevenue).reduce((s,a)=>s-(b[a.code]||0),0)-accounts.filter(isExpense).reduce((s,a)=>s+(b[a.code]||0),0);
-  const drawings=equity.filter(x=>isDrawing(x.a)).reduce((s,x)=>s+x.v,0);
+  // Drawings have a debit balance, so their credit-side value is negative; flip it to get a positive amount to subtract
+  const drawings=-equity.filter(x=>isDrawing(x.a)).reduce((s,x)=>s+x.v,0);
   const capital=equity.filter(x=>!isDrawing(x.a));
   const totalAssets=sum(assets),totalLiabilities=sum(liabilities),totalEquity=sum(capital)+net-drawings;
   $('position-period').textContent=positionDate.to?'As of '+positionDate.to:'As of all recorded dates';
   $('position-body').innerHTML=stmtRow('Assets','','stmt-head')+(assets.length?stmtLines(assets):stmtRow('<span class="stmt-indent stmt-muted">No asset balances</span>',''))+stmtRow('Total Assets',money(totalAssets),'stmt-total')+
     stmtRow('Liabilities','','stmt-head')+(liabilities.length?stmtLines(liabilities):stmtRow('<span class="stmt-indent stmt-muted">No liability balances</span>',''))+stmtRow('Total Liabilities',money(totalLiabilities),'stmt-total')+
-    stmtRow("Owner's Equity",'','stmt-head')+(capital.length?stmtLines(capital):stmtRow('<span class="stmt-indent stmt-muted">No capital balances</span>',''))+stmtRow(net<0?'Less: Net Loss':'Add: Net Income',money(Math.abs(net)))+(drawings?stmtRow('Less: Drawings',money(drawings)):'')+stmtRow('Total Owner’s Equity',money(totalEquity),'stmt-total')+stmtRow('Total Liabilities and Equity',money(totalLiabilities+totalEquity),'stmt-grand');
+    stmtRow("Owner's Equity",'','stmt-head')+(capital.length?stmtLines(capital):stmtRow('<span class="stmt-indent stmt-muted">No capital balances</span>',''))+stmtRow(net<0?'Less: Net Loss':'Add: Net Income',money(Math.abs(net)))+(visible(drawings)?stmtRow('Less: Drawings',money(drawings)):'')+stmtRow('Total Owner’s Equity',money(totalEquity),'stmt-total')+stmtRow('Total Liabilities and Equity',money(totalLiabilities+totalEquity),'stmt-grand');
   const diff=totalAssets-totalLiabilities-totalEquity;
   $('position-message').textContent=Math.abs(diff)<.005?'Statement balances.':'Difference: '+money(diff)+' — review account classifications and balances.';
   $('position-message').classList.toggle('good',Math.abs(diff)<.005);
@@ -372,7 +374,7 @@ function renderPosition(){
 // Cash accounts: asset accounts named "cash" or "bank" (so "Bank Loan Payable" is not mistaken for cash)
 function isCashAccount(a){return normType(a)==='asset'&&/cash|bank/i.test(a.name)&&!/payable|loan/i.test(a.name)}
 // Working-capital accounts count as operating; other assets are investing; other liabilities and equity are financing
-const OPERATING_ASSET=/receivable|inventor|merchandise|suppl|prepaid|advance|deposit/i;
+const OPERATING_ASSET=/rec(ei|ie)vable|inventor|merchandise|suppl|prepaid|advance|deposit/i;
 const OPERATING_LIABILITY=/accounts payable|trade payable|salar|wage|utilit|tax|interest payable|unearned|deferred revenue|accrued|expenses payable|rent payable|customer/i;
 function cashActivity(other){
   const typ=normType(other);
