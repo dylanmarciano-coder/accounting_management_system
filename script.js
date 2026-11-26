@@ -385,7 +385,7 @@ function renderCashflow(){
   const cashAccounts=accounts.filter(isCashAccount),cashCodes=new Set(cashAccounts.map(a=>a.code));
   const {from,to}=cashPeriod;
   const groups={operating:{},investing:{},financing:{}};
-  transactions.filter(t=>(!from||t.date>=from)&&(!to||t.date<=to)).forEach(t=>{
+  transactions.concat(adjustments).filter(t=>(!from||t.date>=from)&&(!to||t.date<=to)).forEach(t=>{
     const dc=cashCodes.has(t.debit),cc=cashCodes.has(t.credit);
     if(dc===cc)return; // not a cash entry, or a transfer between two cash accounts
     const other=accounts.find(a=>a.code===(dc?t.credit:t.debit));if(!other)return;
@@ -398,7 +398,7 @@ function renderCashflow(){
   const op=lines(groups.operating),inv=lines(groups.investing),fin=lines(groups.financing);
   const operating=sum(op),investing=sum(inv),financing=sum(fin),net=operating+investing+financing;
 
-  const cashBal=filter=>transactions.filter(filter).reduce((s,t)=>s+(cashCodes.has(t.debit)?Number(t.amount):0)-(cashCodes.has(t.credit)?Number(t.amount):0),0);
+  const cashBal=filter=>transactions.concat(adjustments).filter(filter).reduce((s,t)=>s+(cashCodes.has(t.debit)?Number(t.amount):0)-(cashCodes.has(t.credit)?Number(t.amount):0),0);
   const beginning=from?cashBal(t=>t.date<from):0,ending=beginning+net;
 
   $('cashflow-period').textContent=from&&to?`For ${from} to ${to}`:from?`From ${from} onward`:to?`Up to ${to}`:'For all recorded dates';
@@ -413,7 +413,7 @@ function renderCashflow(){
   // Check against the cash shown on the Statement of Financial Position for the same end date
   const bal=balanceAt(to),positionCash=cashAccounts.reduce((s,a)=>s+(bal[a.code]||0),0),diff=ending-positionCash;
   const ok=Math.abs(diff)<.005;
-  $('cashflow-message').textContent=(ok?'Ending cash agrees with the Statement of Financial Position. ':`Ending cash differs from the Statement of Financial Position by ${money(diff)} (check adjusting entries that touch cash). `)+'Cash accounts are asset accounts with “cash” or “bank” in the name. Flows come from original transactions only; receivables, payables, prepaid items and inventory count as operating, other assets as investing, and loans and owner’s equity as financing.';
+  $('cashflow-message').textContent=(ok?'Ending cash agrees with the Statement of Financial Position. ':`Ending cash differs from the Statement of Financial Position by ${money(diff)} (check for entries on accounts that no longer exist). `)+'Cash accounts are asset accounts with “cash” or “bank” in the name. Flows include both original transactions and adjusting entries; receivables, payables, prepaid items and inventory count as operating, other assets as investing, and loans and owner’s equity as financing.';
   $('cashflow-message').classList.toggle('good',ok);
 }
 function initExtraStatements(){
